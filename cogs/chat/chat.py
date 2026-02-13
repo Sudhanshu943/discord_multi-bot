@@ -5,6 +5,7 @@ Main Chat Cog for Discord Bot
 Production-ready chatbot cog with comprehensive features.
 """
 
+from urllib import response
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -211,9 +212,11 @@ class AIChat(commands.Cog):
             
             # Format response
             if self.config.features.show_provider and provider:
-                response_text = f"{response}\n\n*-# 🤖 Powered by {provider}*"
+                bot_name = self.bot.user.name.lower()
+                response_text = f"{response}\n\n> *— {bot_name}*"
             else:
                 response_text = response
+
             
             # Handle long responses
             if len(response_text) > 2000:
@@ -631,9 +634,11 @@ class AIChat(commands.Cog):
 
             # Format response
             if self.config.features.show_provider and provider:
-                response_text = f"{response}\n\n*-# 🤖 Powered by {provider}*"
+                bot_name = self.bot.user.name.lower()
+                response_text = f"{response}\n\n> *— {bot_name}*"
             else:
                 response_text = response
+
 
             # Handle long responses
             if len(response_text) > 2000:
