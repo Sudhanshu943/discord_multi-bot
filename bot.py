@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import logging
+import asyncio
 
 # Setup logging
 logging.basicConfig(
@@ -17,15 +18,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger('discord')
 
+# Reduce gateway verbosity
+logging.getLogger('discord.gateway').setLevel(logging.WARNING)
+
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.voice_states = True
+intents.voice_states = True  # Required for voice connections
+intents.guild_messages = True
+intents.members = True  # Fixed: was guild_members
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+
+bot = commands.Bot(
+    command_prefix='!',
+    intents=intents,
+    max_messages=1000,  # Help with message caching
+    heartbeat_timeout=60,  # Increase heartbeat timeout
+    guild_ready_timeout=10,  # Wait longer for guild ready
+)
 
 @bot.event
 async def on_ready():
@@ -45,6 +58,14 @@ async def on_ready():
         # await bot.tree.sync()
     except Exception as e:
         logger.error(f"❌ Failed to sync commands: {e}")
+
+@bot.event
+async def on_disconnect():
+    logger.warning("Bot disconnected from Discord Gateway")
+
+@bot.event
+async def on_resume():
+    logger.info("Bot resumed connection to Discord Gateway")
 
 
 # Load cogs
@@ -90,10 +111,32 @@ async def sync(ctx, guild_id: int = None):
         await ctx.send(f"❌ Error: {e}")
 
 import asyncio
+
 async def main():
-    async with bot:
-        await load_cogs()
-        await bot.start(TOKEN)
+    """Main function with reconnection handling"""
+    max_retries = 5
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            async with bot:
+                await load_cogs()
+                logger.info("Starting bot...")
+                await bot.start(TOKEN)
+                retry_count = 0  # Reset on successful connection
+        except discord.LoginFailure:
+            logger.error("Invalid token - cannot reconnect")
+            break
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Error (attempt {retry_count}/{max_retries}): {e}")
+            if retry_count < max_retries:
+                wait_time = min(5 * retry_count, 30)  # Exponential backoff
+                logger.info(f"Reconnecting in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error("Max retries reached. Exiting.")
+                break
 
 if __name__ == '__main__':
     asyncio.run(main())

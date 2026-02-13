@@ -474,9 +474,15 @@ class PlayerManager:
     
     async def disconnect(self, guild: discord.Guild):
         """Disconnect from a guild"""
-        if guild.id in self.players:
-            await self.players[guild.id].disconnect()
-            del self.players[guild.id]
+        try:
+            if guild.id in self.players:
+                await self.players[guild.id].disconnect()
+                del self.players[guild.id]
+                logger.info(f"Disconnected from {guild.name} (ID: {guild.id})")
+        except KeyError:
+            logger.debug(f"No active player to disconnect for guild {guild.id}")
+        except Exception as e:
+            logger.error(f"Error disconnecting from {guild.name}: {e}")
     
     def remove_player(self, guild_id: int):
         """Remove player for a guild"""
