@@ -34,6 +34,8 @@ YDL_OPTS = {
         }
     },
 
+    'js_runtimes': ['node'],
+
     'http_headers': {
         'User-Agent': 'Mozilla/5.0',
     },
@@ -44,7 +46,6 @@ YDL_OPTS = {
     'geo_bypass': True,
     'prefer_ffmpeg': True,
 }
-
 
 # ✅ OPTIMIZED FFmpeg options for LOW LATENCY
 FFMPEG_OPTS = {
