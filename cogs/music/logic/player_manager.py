@@ -20,13 +20,15 @@ logger = logging.getLogger('discord.music.player')
 
 # ✅ OPTIMIZED YT-DLP options for SPEED + Opus preference
 YDL_OPTS = {
-    'format': 'bestaudio/best',
+    'format': 'best',
     'quiet': True,
     'cookiefile': './cookies.txt',
     'js_runtimes': {
         'node': {}
-    }
+    },
+    'remote_components': 'ejs:github',
 }
+
 
 # ✅ OPTIMIZED FFmpeg options for LOW LATENCY
 FFMPEG_OPTS = {
