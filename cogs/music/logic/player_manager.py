@@ -26,8 +26,9 @@ YDL_OPTS = {
     'js_runtimes': {
         'node': {}
     },
-    'remote_components': 'ejs:github',
+    'remote_components': ['ejs:github'],
 }
+
 
 
 # ✅ OPTIMIZED FFmpeg options for LOW LATENCY
