@@ -20,42 +20,31 @@ logger = logging.getLogger('discord.music.player')
 
 # ✅ OPTIMIZED YT-DLP options for SPEED + Opus preference
 YDL_OPTS = {
-    'format': 'bestaudio[acodec=opus]/bestaudio/best',  # Prefer Opus codec
+    'format': 'bestaudio[acodec=opus]/bestaudio[acodec!=none]/bestaudio/best',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    
-    # ✅ 1. Cookies (most important)
+
     'cookiefile': './cookies.txt',
-    
-    # ✅ 2. Android client spoofing
+
     'extractor_args': {
         'youtube': {
-            'player_client': ['android_music', 'android', 'web'],
-            'skip': ['hls', 'dash', 'translated_subs']
+            'player_client': ['web', 'android'],
         }
     },
-    
-    # ✅ 3. Mobile User-Agent
+
     'http_headers': {
-        'User-Agent': 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate',
-        'DNT': '1',
-    }, # Use cookies for better extraction
-    
+        'User-Agent': 'Mozilla/5.0',
+    },
+
     'extract_flat': False,
     'noplaylist': True,
     'nocheckcertificate': True,
     'geo_bypass': True,
-    'age_limit': None,
     'prefer_ffmpeg': True,
-    'socket_timeout': 10,           # Faster timeout
-    'retries': 3,                   # Fewer retries
-    'fragment_retries': 3,
 }
+
 
 # ✅ OPTIMIZED FFmpeg options for LOW LATENCY
 FFMPEG_OPTS = {
