@@ -55,6 +55,7 @@ config/secrets.ini
 config/*.env
 *.pem
 *.key
+cookies.txt
 
 # Node.js (if used)
 node_modules/
