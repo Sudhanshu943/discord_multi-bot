@@ -125,7 +125,7 @@ class ChatConfig:
         
         self.max_history = self._getint(section, 'max_history', 20)
         self.persist_conversations = self._getboolean(section, 'persist_conversations', True)
-        self.conversation_timeout_hours = self._getint(section, 'conversation_timeout_hours', 0.083)  # 5 minutes
+        self.conversation_timeout_hours = self._getfloat(section, 'conversation_timeout_hours', 0.166)  # 10 minutes
     
     def _load_provider_configs(self) -> None:
         """Load LLM provider configurations from environment variables."""
