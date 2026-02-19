@@ -872,14 +872,8 @@ class AIChat(commands.Cog):
             message.author.id, content
         )
         
-        # Check if message contains song recommendations in >> format
-        song_recommendations = re.findall(r'>>\s*(.*?)(?=\n|$)', content)
-        if song_recommendations:
-            for song_query in song_recommendations:
-                if song_query.strip():
-                    success, response = await self.music_integration.search_and_play(message, song_query.strip())
-                    await message.reply(response, mention_author=False)
-            return
+        # Music integration should not restrict the bot's natural responses
+        # The >> format will be handled in the response processing phase
         
         # Process mentions in the message - check permissions and get user details
         mentioned_users_info = ""
