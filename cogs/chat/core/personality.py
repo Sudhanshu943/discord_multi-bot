@@ -247,16 +247,16 @@ class PersonalityManager:
             response += "\n"
         
         if info["interests"]:
-            response += f"**Your所谓 interests:** {', '.join(info['interests'])}\n\n"
+            response += f"**Your interests:** {', '.join(info['interests'])}\n\n"
         
         if info["preferences"]:
-            response += f"**Your weird preferences:**\n"
+            response += f"**Your preferences:**\n"
             for key, value in info["preferences"].items():
                 response += f"• {key}: {value}\n"
             response += "\n"
         
         if info["last_topic"]:
-            response += f"**Last thing we talked about (that I cared about):** {info['last_topic']}\n\n"
+            response += f"**Last thing we talked about:** {info['last_topic']}\n\n"
         
         response += f"**Stats:** {info['message_count']} messages I've had to respond to"
         
@@ -298,78 +298,6 @@ class PersonalityManager:
                          "tell me about me", "my info"]:
             return self.format_what_know_response(user_id, user_name)
         
-        # Music-related commands - JSON format responses
-        if any(keyword in msg_lower for keyword in ["recommend songs", "song recommendation", "suggest songs", "recommend me songs"]):
-            import random
-            songs = [
-                "Blinding Lights - The Weeknd",
-                "Shape of You - Ed Sheeran",
-                "Uptown Funk - Mark Ronson",
-                "Dance Monkey - Tones and I",
-                "Watermelon Sugar - Harry Styles"
-            ]
-            recommended = random.sample(songs, 3)
-            songs_list = ", ".join(recommended)
-            queries_list = ", ".join([f">> {s}" for s in recommended])
-            json_response = {
-                "person": user_name,
-                "action": "recommending",
-                "chat": f"Here are some songs you might like:",
-                "song": songs_list,
-                "query": queries_list
-            }
-            return f"```json\n{json.dumps(json_response, indent=2)}\n```"
-        
-        if any(keyword in msg_lower for keyword in ["play", "baja de", "sunao", "suna de", "sun le", "play song"]):
-            # Extract song name from the message
-            song_name = ""
-            patterns = [
-                r"play\s+(.+?)$",
-                r"baja\s+(.+?)$",
-                r"sunao\s+(.+?)$",
-                r"suna\s+de\s+(.+?)$",
-                r"sun\s+le\s+(.+?)$"
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, msg_lower)
-                if match:
-                    song_name = match.group(1).strip()
-                    break
-            
-            if not song_name:
-                # Default song
-                song_name = "Kala Chashma"
-            
-            json_response = {
-                "person": user_name,
-                "action": "playing",
-                "chat": f"Playing {song_name.title()}",
-                "song": song_name.title(),
-                "query": f">> {song_name}"
-            }
-            return f"```json\n{json.dumps(json_response, indent=2)}\n```"
-        
-        # Trending songs
-        if any(keyword in msg_lower for keyword in ["trending song", "trending songs", "top song", "top songs", "latest song"]):
-            import random
-            trending = [
-                "Flow - Flow",
-                "Peaches - Justin Bieber",
-                "Bad Habits - Ed Sheeran",
-                "Stay - The Kid LAROI"
-            ]
-            recommended = random.sample(trending, 3)
-            songs_list = ", ".join(recommended)
-            queries_list = ", ".join([f">> {s}" for s in recommended])
-            json_response = {
-                "person": user_name,
-                "action": "trending",
-                "chat": f"Here are trending songs:",
-                "song": songs_list,
-                "query": queries_list
-            }
-            return f"```json\n{json.dumps(json_response, indent=2)}\n```"
-        
         return None
     
     def can_user_mention(self, user: discord.Member, target: discord.Member, channel: discord.TextChannel) -> bool:
@@ -383,9 +311,6 @@ class PersonalityManager:
         
         Returns True if allowed, False if not allowed.
         """
-        # Bot's perspective - check if the USER can mention the TARGET
-        
-        # Get the channel's permission overwrites
         try:
             # Check if target is mentionable (has a role that allows mentioning)
             if target.mentionable:

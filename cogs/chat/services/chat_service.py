@@ -3,7 +3,7 @@
 import logging
 from typing import Tuple, Optional
 
-from ..models.chat import ChatRequest, ChatResponse, ProviderType
+from ..models.chat import ProviderType
 from .memory_manager import MemoryManager
 from .provider_router import ProviderRouter
 from .safety_filter import SafetyFilter

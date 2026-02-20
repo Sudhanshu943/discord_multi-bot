@@ -4,8 +4,8 @@ import configparser
 import json
 from datetime import datetime, timezone, timedelta
 import logging
-from cogs.chat.personality import get_personality_manager
-from cogs.chat.config import ChatConfig
+from cogs.chat.core.personality import get_personality_manager
+from cogs.chat.core.config import ChatConfig
 
 
 logger = logging.getLogger('discord')

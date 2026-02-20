@@ -1,4 +1,4 @@
-"""Business logic services layer."""
+"""Services module - Business logic layer (framework-independent)."""
 
 from .chat_service import ChatService
 from .memory_manager import MemoryManager

@@ -72,7 +72,7 @@ class MusicIntegration:
         'classical': ["Für Elise - Beethoven", "Moonlight Sonata - Beethoven", "Canon in D - Pachelbel"]
     }
     
-    def __init__(self, bot):
+    def __init__(self, bot: discord.Client):
         self.bot = bot
         self.user_preferences: Dict[int, MusicPreference] = {}
         logger.info("MusicIntegration initialized")
@@ -321,7 +321,7 @@ class MusicIntegration:
         
         return songs
     
-    async def play_multiple_songs(self, ctx, song_queries: List[str]) -> Tuple[int, List[str]]:
+    async def play_multiple_songs(self, message: discord.Message, song_queries: List[str]) -> Tuple[int, List[str]]:
         """
         Play multiple songs one by one
         Returns: (success_count, list of results)
@@ -333,7 +333,7 @@ class MusicIntegration:
             if not query.strip():
                 continue
                 
-            success, response = await self.search_and_play(ctx, query.strip())
+            success, response = await self.search_and_play(message, query.strip())
             results.append(response)
             
             if success:
@@ -351,7 +351,7 @@ class MusicIntegration:
             return music_cog.player_manager.get_player(guild)
         return None
     
-    async def search_and_play(self, ctx, query: str):
+    async def search_and_play(self, message: discord.Message, query: str):
         """Search for a song and add to queue"""
         music_cog = self.bot.get_cog('Music')
         if not music_cog:
@@ -359,21 +359,21 @@ class MusicIntegration:
         
         try:
             # Get player
-            player = music_cog.player_manager.get_player(ctx.guild)
+            player = music_cog.player_manager.get_player(message.guild)
             
             # Connect to voice channel if not connected
             if not player.voice_client:
-                if not ctx.author.voice:
+                if not message.author.voice:
                     return False, "You're not in a voice channel!"
                 
-                success = await player.connect(ctx.author.voice.channel)
+                success = await player.connect(message.author.voice.channel)
                 if not success:
                     return False, "Failed to join voice channel!"
             
             # Search for the song
             tracks, platform, is_playlist = await music_cog.search_manager.search(query, limit=1, extract_audio=False)
             if tracks:
-                await music_cog._handle_single_track(ctx, tracks[0], player)
+                await music_cog._handle_single_track(message, tracks[0], player)
                 return True, f"Added '{tracks[0]['title']}' to queue!"
             else:
                 return False, "No matching song found!"

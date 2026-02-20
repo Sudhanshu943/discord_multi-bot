@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Tuple, Optional
 
-from ..models.chat import ChatResponse, ProviderType
+from ..models.chat import ProviderType
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class ProviderRouter:
         # Try to use personality manager if available
         if hasattr(self.config, 'personality') and self.config.personality:
             try:
-                prompt = self.config.personality.get_system_prompt()
+                prompt = self.config.system_prompt
                 if prompt:
                     return prompt
             except Exception as e:

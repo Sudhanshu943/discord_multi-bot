@@ -1,12 +1,13 @@
-"""Data models for chat system."""
+"""Models module - Data structures."""
 
-from .chat import ChatRequest, ChatResponse
-from .memory import ConversationTurn, ChannelMemory, GuildMemory
+from .chat import ChatRequest, ChatResponse, ProviderType
+from .memory import ChannelMemory, GuildMemory, ConversationTurn
 
 __all__ = [
-    "ChatRequest",
-    "ChatResponse",
-    "ConversationTurn",
-    "ChannelMemory",
-    "GuildMemory",
+    'ChatRequest',
+    'ChatResponse',
+    'ProviderType',
+    'ChannelMemory',
+    'GuildMemory',
+    'ConversationTurn',
 ]

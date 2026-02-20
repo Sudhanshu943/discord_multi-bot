@@ -1,7 +1,7 @@
 """Memory management service for conversation context."""
 
 import logging
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 
 from ..models.memory import ChannelMemory, GuildMemory
 from ..storage.memory_storage import MemoryStorage
