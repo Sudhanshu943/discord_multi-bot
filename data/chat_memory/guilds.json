@@ -817,12 +817,28 @@
         "user_id": null,
         "tokens": 0,
         "metadata": {}
+      },
+      {
+        "role": "user",
+        "content": "[User: Shining Monk (ID: 581373685387231232)] han bhai kya hal h tere",
+        "timestamp": 1771593300.011613,
+        "user_id": 581373685387231232,
+        "tokens": 0,
+        "metadata": {}
+      },
+      {
+        "role": "assistant",
+        "content": "**Shining Monk, tumhari hal chalak hain?** \"Dilwale Dulhania Le Jayenge\" bajaunga. {\"song\": \"Dilwale Dulhania Le Jayenge\", \"query\": \">> Dilwale Dulhania Le Jayenge\"}",
+        "timestamp": 1771593300.018793,
+        "user_id": null,
+        "tokens": 0,
+        "metadata": {}
       }
     ],
-    "total_messages": 102,
+    "total_messages": 104,
     "total_tokens": 0,
     "created_at": 1771574315.0606134,
-    "last_updated": 1771592894.3219903,
+    "last_updated": 1771593300.0187967,
     "metadata": {}
   }
 }
