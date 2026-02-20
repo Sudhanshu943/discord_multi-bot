@@ -52,6 +52,15 @@ class Music(commands.Cog):
     async def _send_response(self, ctx, content=None, embed=None, view=None, ephemeral=False):
         """Send response handling both text and slash commands"""
         try:
+            # Handle Message objects (when called from chat integration)
+            if isinstance(ctx, discord.Message):
+                kwargs = {}
+                if content:
+                    kwargs['content'] = content
+                if embed:
+                    kwargs['embed'] = embed
+                return await ctx.reply(**kwargs, mention_author=False)
+            
             kwargs = {}
             if content:
                 kwargs['content'] = content
@@ -84,7 +93,7 @@ class Music(commands.Cog):
                 return await ctx.send(**kwargs)
         except discord.errors.NotFound:
             # Fallback to channel send if interaction not found
-            if ctx.channel:
+            if hasattr(ctx, 'channel') and ctx.channel:
                 kwargs.pop('view', None)
                 kwargs.pop('ephemeral', None)
                 return await ctx.channel.send(**kwargs)

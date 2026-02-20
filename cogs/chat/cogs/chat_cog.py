@@ -14,6 +14,7 @@ import logging
 import time
 import re
 import json
+import asyncio
 from datetime import datetime
 
 from ..core import ChatConfig, RateLimiter, get_personality_manager
@@ -56,6 +57,10 @@ class ChatCog(commands.Cog):
             user_cooldown=self.config.rate_limit.user_cooldown,
             global_requests_per_minute=self.config.rate_limit.global_requests_per_minute
         )
+
+        # ===== State Management for Music Suggestions =====
+        # Track: {user_id: {"song": "Song Name", "mood": "happy", "timestamp": time}}
+        self.pending_song_suggestions = {}
 
         self._cleanup_task.start()
 
@@ -107,7 +112,119 @@ class ChatCog(commands.Cog):
             logger.error(f"Chat service error: {e}")
             raise ChatException("Failed to process request")
 
-    # ==================== Helper: Send Response ====================
+    # ==================== Helper: Detect Music Request ====================
+
+    def _detect_music_request(self, message: str) -> bool:
+        """
+        Detect if user is explicitly asking for music - ENGLISH & HINDI.
+        Only triggers on clear music requests, not just mood mentions.
+        """
+        message_lower = message.lower()
+        
+        # English music request patterns
+        english_triggers = [
+            r'play\s+(some\s+)?music',
+            r'play\s+(some\s+)?songs?',
+            r'suggest\s+(some\s+)?songs?',
+            r'recommend\s+(some\s+)?songs?',
+            r'put\s+on\s+music',
+            r'queue\s+music',
+            r'queue\s+songs?',
+            r'find\s+songs?',
+            r'search\s+songs?',
+        ]
+        
+        # Hindi music request patterns (Hinglish - Hindi written in English)
+        hindi_triggers = [
+            r'ga[an]+e?\s+suggest',       # gane/gaana/gana suggest
+            r'ga[an]+a?\s+baja',           # gaana/gana baja (play song)
+            r'suna?[ao]?\s+de',            # suna de / sunao / sumo de
+            r'sun',                        # sunao, sun, etc
+            r'songs?\s+suggest',          # songs suggest
+            r'ga[an]+[ae]?\s+cha',        # gane/gaana want
+            r'music\s+cha',               # want music
+            r'koi\s+ga[an]+[ae]?',        # any song (koi gane/gaana)
+            r'kuch\s+ga[an]+[ae]?',       # some songs
+            r'recommendation',            # recommendation
+        ]
+        
+        import re
+        
+        # Check English patterns
+        for pattern in english_triggers:
+            if re.search(pattern, message_lower):
+                logger.info(f"🎵 Music request (English) detected: {pattern}")
+                return True
+        
+        # Check Hindi patterns
+        for pattern in hindi_triggers:
+            if re.search(pattern, message_lower):
+                logger.info(f"🎵 Music request (Hindi) detected: {pattern}")
+                return True
+        
+        return False
+
+    # ==================== Helper: Detect Play Confirmation ====================
+
+    def _detect_play_confirmation(self, message: str) -> bool:
+        """
+        Detect if user is confirming to play music.
+        Triggers on: yes, ok, suna le, han baja, etc.
+        """
+        message_lower = message.lower()
+        
+        # Confirmation patterns - English + Hindi
+        confirm_patterns = [
+            # English
+            r'\byes\b', r'\bokay?\b', r'\bok\b', r'\bk\b', r'\bgo\b', r'\bdo\s+it\b',
+            r'\bstart\b', r'\bplay\b', r'\blet\'s\s+go\b',
+            # Hindi/Hinglish
+            r'\bha[an]+\b',              # han / haan
+            r'\bbaaja?\b',               # baja / baja
+            r'\bsuna?[ao]?\s+de\b',      # suna de / sunao
+            r'\bch[au]l\b',              # chaal / chul
+            r'\bthe[io]k\b',             # theek / theik
+            r'\bshadi\b',                # shudd (sure)
+            r'\bthee[ko]?',              # theek
+            r'\bsho\b',                  # sho (yes/sure)
+        ]
+        
+        import re
+        for pattern in confirm_patterns:
+            if re.search(pattern, message_lower):
+                logger.info(f"🎵 Play confirmation detected: {pattern}")
+                return True
+        return False
+
+    # ==================== Helper: Detect Song Rejection ====================
+
+    def _detect_song_rejection(self, message: str) -> bool:
+        """
+        Detect if user is rejecting the suggested song.
+        Triggers on: no, ye wala ne, koi aur, etc.
+        """
+        message_lower = message.lower()
+        
+        # Rejection patterns - English + Hindi
+        reject_patterns = [
+            # English
+            r'\bno\b', r'\bnope\b', r'\bdon\'t\b', r'\bnot\s+this\b', r'\another\b',
+            # Hindi/Hinglish
+            r'\bna[ah]+\b',               # nah / naa
+            r'\bna\b',                   # na (no)
+            r'\bye\s+wala\s+ne',         # ye wala ne (not this one)
+            r'\bkoi\s+aur\b',            # koi aur (any other)
+            r'\bkuch\s+aur\b',           # kuch aur (something else)
+            r'\bfir\s+se\b',             # fir se (again/different)
+            r'\bnahin\b',                # nahin (no)
+        ]
+        
+        import re
+        for pattern in reject_patterns:
+            if re.search(pattern, message_lower):
+                logger.info(f"🎵 Song rejection detected: {pattern}")
+                return True
+        return False
 
     async def _send_response(
         self,
@@ -117,81 +234,95 @@ class ChatCog(commands.Cog):
         provider: Optional[str]
     ) -> None:
         """Format and send the AI response to Discord."""
+        # Step 1: Extract and remove JSON objects from response
+        parsed_response = response
+        extracted_songs = []
+        
+        # Remove ALL JSON objects from the response and extract songs
+        json_pattern = r'\{[^{}]*(?:"[^"]*"[^{}]*)*\}'
+        json_matches = re.finditer(json_pattern, parsed_response)
+        
+        for match in json_matches:
+            try:
+                json_text = match.group()
+                json_data = json.loads(json_text)
+                
+                if isinstance(json_data, dict):
+                    # Extract songs from JSON
+                    if 'song' in json_data:
+                        song = json_data['song']
+                        if isinstance(song, str):
+                            extracted_songs.append(song.strip())
+                    
+                    if 'songs' in json_data and isinstance(json_data['songs'], list):
+                        extracted_songs.extend([s for s in json_data['songs'] if isinstance(s, str)])
+                    
+                    if 'query' in json_data:
+                        query = json_data['query']
+                        if isinstance(query, str) and query.startswith('>>'):
+                            song_name = query[2:].strip()
+                            if song_name and song_name not in extracted_songs:
+                                extracted_songs.append(song_name)
+                    
+                    if 'play_all' in json_data:
+                        play_query = json_data['play_all']
+                        if isinstance(play_query, str) and play_query.startswith('>>'):
+                            song_name = play_query[2:].strip()
+                            if song_name and song_name not in extracted_songs:
+                                extracted_songs.append(song_name)
+            except json.JSONDecodeError:
+                # Skip invalid JSON
+                pass
+        
+        # Remove all JSON objects from the display text
+        parsed_response = re.sub(json_pattern, '', response)
+        # Clean up extra spaces and newlines
+        parsed_response = re.sub(r'\s+', ' ', parsed_response).strip()
+        
+        # If response is empty after JSON removal, use original
+        if not parsed_response or len(parsed_response) < 5:
+            parsed_response = response
+        
         # Format response text
         if self.config.features.show_provider and provider:
             bot_name = self.bot.user.name.lower()
-            response_text = f"{response}\n\n> *— {bot_name}*"
+            response_text = f"{parsed_response}\n\n> *— {bot_name}*"
         else:
-            response_text = response
+            response_text = parsed_response
 
-        # Check for song recommendations (>> format) in AI response
-        song_recommendations = []
+        # Step 2: Extract quoted song names from AI response for later confirmation
+        quoted_songs = re.findall(r'["\']([^"\']{3,})["\']', response)
+        if quoted_songs:
+            self.pending_song_suggestions[message.author.id] = {
+                "songs": quoted_songs,
+                "timestamp": time.time()
+            }
+            logger.info(f"🎵 Stored suggested songs from AI response: {quoted_songs}")
 
-        # 1️⃣ Try structured JSON extraction first
-        json_match = re.search(r'\{.*?\}', response_text, re.DOTALL)
-        
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group())
-                if isinstance(parsed, dict) and "song" in parsed:
-                    clean_song = parsed["song"].strip()
-                    if clean_song:
-                        song_recommendations.append(clean_song)
-            except json.JSONDecodeError:
-                pass
-            
-        # 2️⃣ Fallback to >> extraction if no valid JSON found
-        if not song_recommendations:
+        # Step 3: Check for additional song recommendations in regular text
+        if not extracted_songs:
             raw_songs = self.music_integration.extract_songs_from_text(response_text)
             for song in raw_songs:
                 clean_song = re.sub(r'[^\w\s\-]', '', song).strip()
                 if clean_song:
-                    song_recommendations.append(clean_song)
+                    extracted_songs.append(clean_song)
         
+        # Step 4: Log and send response (NO auto-play - music only on explicit user request)
+        json_log = {
+            "person": message.author.name,
+            "action": "chat",
+            "chat": response_text[:500] if len(response_text) > 500 else response_text,
+            "song": "",
+            "query": ""
+        }
+        logger.info(f"📥 IN: {content}")
+        logger.info(f"📤 OUT: {json.dumps(json_log, indent=2)}")
 
-        if song_recommendations:
-            songs_list = ", ".join([s.strip() for s in song_recommendations])
-            queries_list = ", ".join([f">> {s.strip()}" for s in song_recommendations])
-
-            json_response = {
-                "person": message.author.name,
-                "action": "playing",
-                "chat": response[:500] if len(response) > 500 else response,
-                "song": songs_list,
-                "query": queries_list
-            }
-            logger.info(f"📥 IN: {content}")
-            logger.info(f"📤 OUT: {json.dumps(json_response, indent=2)}")
-
-            if len(response_text) > 2000:
-                for chunk in self._split_message(response_text, 2000):
-                    await message.reply(chunk, mention_author=False)
-            else:
-                await message.reply(response_text, mention_author=False)
-
-            # Play recommended songs
-            for song_query in song_recommendations:
-                if song_query.strip():
-                    _, play_response = await self.music_integration.search_and_play(
-                        message, song_query.strip()
-                    )
-                    await message.reply(play_response, mention_author=False)
+        if len(response_text) > 2000:
+            for chunk in self._split_message(response_text, 2000):
+                await message.reply(chunk, mention_author=False)
         else:
-            json_response = {
-                "person": message.author.name,
-                "action": "chat",
-                "chat": response[:500] if len(response) > 500 else response,
-                "song": "",
-                "query": ""
-            }
-            logger.info(f"📥 IN: {content}")
-            logger.info(f"📤 OUT: {json.dumps(json_response, indent=2)}")
-
-            if len(response_text) > 2000:
-                for chunk in self._split_message(response_text, 2000):
-                    await message.reply(chunk, mention_author=False)
-            else:
-                await message.reply(response_text, mention_author=False)
+            await message.reply(response_text, mention_author=False)
 
     # ==================== Commands ====================
 
@@ -435,6 +566,48 @@ class ChatCog(commands.Cog):
 
             await self._send_response(message, content, response, provider)
 
+            # --- Handle music requests (only on confirmation, not just suggestion) ---
+            if message.author.voice:
+                try:
+                    user_id = message.author.id
+                    
+                    # Check if user is confirming to play music (han, baja, yes, ok, etc)
+                    if self._detect_play_confirmation(content):
+                        logger.info(f"🎵 User confirmed to play music")
+                        
+                        # Get stored song suggestions from AI response
+                        if user_id in self.pending_song_suggestions:
+                            stored = self.pending_song_suggestions[user_id]
+                            songs_list = stored.get("songs", [])
+                            
+                            if songs_list:
+                                # Pick first song from suggestions
+                                song_to_play = songs_list[0]
+                                logger.info(f"🎵 Playing first suggested song: {song_to_play}")
+                                
+                                if message.author.voice:
+                                    _, play_response = await self.music_integration.search_and_play(
+                                        message, song_to_play
+                                    )
+                                    await message.reply(play_response, mention_author=False)
+                                    # Clear suggestion after playing
+                                    del self.pending_song_suggestions[user_id]
+                            else:
+                                logger.info(f"🎵 Empty songs list in storage")
+                        else:
+                            logger.info(f"🎵 No songs stored, asking user for song name")
+                            await message.reply("🎵 Kaunsa gaana bajun? Naam bata!", mention_author=False)
+                    
+                    # Detect if user rejected a song suggestion (clear the stored one)
+                    elif self._detect_song_rejection(content):
+                        logger.info(f"🎵 User rejected songs")
+                        if user_id in self.pending_song_suggestions:
+                            del self.pending_song_suggestions[user_id]
+                        # AI will naturally suggest another song in its response
+                
+                except Exception as e:
+                    logger.debug(f"Music request handling error: {e}")
+
         except RateLimitException as e:
             await message.reply(
                 f"⏳ You're sending messages too fast! Please wait {e.retry_after:.1f} seconds.",
@@ -476,6 +649,24 @@ class ChatCog(commands.Cog):
             await ctx.send("❌ An error occurred while processing the command.")
 
     # ==================== Helper Methods ====================
+
+    async def _auto_trigger_mood_playlist(self, message: discord.Message, mood: str) -> None:
+        """
+        Background task to trigger mood-based auto-playlist
+        Runs non-blocking so AI response sends immediately
+        """
+        try:
+            logger.info(f"🎵 Auto-triggering {mood} mood playlist for {message.author.name}")
+            success, response = await self.music_integration.play_mood_playlist(message, mood)
+            
+            if success:
+                # Send playlist confirmation (without mentioning)
+                await message.reply(response, mention_author=False, silent=True)
+                logger.info(f"✅ Auto-playlist triggered successfully for {mood}")
+            else:
+                logger.warning(f"⚠️ Auto-playlist failed: {response}")
+        except Exception as e:
+            logger.error(f"Error in auto-playlist: {e}")
 
     @staticmethod
     def _split_message(text: str, max_length: int) -> List[str]:

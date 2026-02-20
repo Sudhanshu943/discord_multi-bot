@@ -23,14 +23,20 @@ class ProviderRouter:
         self.config = config
         self.safety_filter = safety_filter
         self.groq_client = None
-        self.groq_model = "mixtral-8x7b-32768"
+        self.groq_model = "llama-3.3-70b-versatile"
+        self.groq_fallback_models = []
         
-        # Get Groq API key from config.providers
+        # Get Groq API key and config from config.providers
         groq_key = None
         for provider in config.providers:
             if provider.name.startswith("groq"):
                 groq_key = provider.api_key
-                self.groq_model = provider.model or "mixtral-8x7b-32768"
+                self.groq_model = provider.model or "llama-3.3-70b-versatile"
+                # Get fallback models from provider config
+                if hasattr(provider, 'fallback_models') and provider.fallback_models:
+                    self.groq_fallback_models = provider.fallback_models
+                logger.info(f"✅ Groq primary model: {self.groq_model}")
+                logger.info(f"✅ Groq fallback models: {self.groq_fallback_models}")
                 break
         
         if not groq_key:
@@ -53,7 +59,7 @@ class ProviderRouter:
         temperature: float = 0.7
     ) -> Tuple[str, ProviderType]:
         """
-        Route request to appropriate provider.
+        Route request to appropriate provider with automatic fallback on rate limits.
         
         Args:
             message: User message
@@ -95,34 +101,66 @@ class ProviderRouter:
             "content": message
         })
         
-        try:
-            start_time = time.time()
-            
-            # Call Groq API with configured model
-            response = await self.groq_client.chat.completions.create(
-                model=self.groq_model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=1.0,
-            )
-            
-            response_text = response.choices[0].message.content
-            response_time = time.time() - start_time
-            
-            # Redact secrets from response
-            redacted_response, detected_secrets = await self.safety_filter.validate_ai_output(response_text)
-            
-            if detected_secrets:
-                logger.warning(f"Groq response contained secrets: {detected_secrets}")
-            
-            logger.info(f"Groq response ({response_time:.2f}s): {len(redacted_response)} chars")
-            
-            return redacted_response, ProviderType.GROQ
-            
-        except Exception as e:
-            logger.error(f"Groq API error: {e}")
-            raise
+        # Try primary model first, then fallback models on rate limit
+        models_to_try = [self.groq_model] + self.groq_fallback_models
+        
+        for attempt, model in enumerate(models_to_try):
+            try:
+                logger.info(f"🔄 Trying Groq model: {model} (attempt {attempt + 1}/{len(models_to_try)})")
+                
+                start_time = time.time()
+                
+                # Call Groq API
+                response = await self.groq_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=1.0,
+                )
+                
+                response_text = response.choices[0].message.content
+                response_time = time.time() - start_time
+                
+                # Redact secrets from response
+                redacted_response, detected_secrets = await self.safety_filter.validate_ai_output(response_text)
+                
+                if detected_secrets:
+                    logger.warning(f"Groq response contained secrets: {detected_secrets}")
+                
+                logger.info(f"✅ Groq {model} response ({response_time:.2f}s): {len(redacted_response)} chars")
+                
+                return redacted_response, ProviderType.GROQ
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # Check if it's a 429 rate limit error
+                if "429" in error_str or "rate_limit_exceeded" in error_str or "rate limit" in error_str.lower():
+                    logger.warning(f"⚠️ Rate limit hit on {model}, trying fallback...")
+                    
+                    # If this is the last model, raise the error
+                    if attempt == len(models_to_try) - 1:
+                        logger.error(f"❌ All models exhausted due to rate limits. Last error: {e}")
+                        raise
+                    # Otherwise, continue to next model
+                    continue
+                
+                # Check if it's a 400 decommissioned model error
+                elif "400" in error_str or "decommissioned" in error_str.lower() or "model_decommissioned" in error_str:
+                    logger.warning(f"⚠️ Model {model} has been decommissioned, trying fallback...")
+                    
+                    # If this is the last model, raise the error
+                    if attempt == len(models_to_try) - 1:
+                        logger.error(f"❌ All models exhausted or decommissioned. Last error: {e}")
+                        raise
+                    # Otherwise, continue to next model
+                    continue
+                
+                else:
+                    # Non-recoverable error, stop trying
+                    logger.error(f"❌ Groq API error on {model}: {e}")
+                    raise
     
     def _build_system_prompt(self) -> str:
         """Build system prompt from config."""
